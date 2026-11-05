@@ -181,7 +181,7 @@ class SupabaseAccountService(
 
     private fun callDeleteAccount(token: String) = http.request(
         "POST",
-        "$base/functions/v1/delete-account",
+        "$base/functions/v1/dynamic-api",
         mapOf("apikey" to apiKey, "Authorization" to "Bearer $token", "Content-Type" to "application/json"),
         "{}",
     )
