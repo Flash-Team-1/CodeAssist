@@ -929,6 +929,10 @@ We never collect your code, file or project names, what you type, or anything th
     <string name="verify_notice_renew">Renew</string>
     <string name="verify_notice_sent">Request sent</string>
     <string name="verify_notice_dismiss">Got it</string>
+    <string name="verify_request_title">Get verified</string>
+    <string name="verify_request_body">Verified publishers get a badge on their profile and in the store. Send a request and the admin will review your account.</string>
+    <string name="verify_request_button">Request verification</string>
+    <string name="verify_request_later">Later</string>
     <string name="verify_empty">No publishers in the store yet.</string>
     <string name="moderation_queue_clear">Nothing is waiting for review.</string>
     <string name="moderation_recent">Recent decisions</string>
