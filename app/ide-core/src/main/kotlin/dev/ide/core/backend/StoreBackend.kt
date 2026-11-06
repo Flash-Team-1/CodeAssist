@@ -700,6 +700,16 @@ internal class StoreBackend(
     override suspend fun rejectSubmission(versionId: String, note: String): String? =
         withContext(storeIo) { moderationState.reject(versionId, note) }
 
+    override suspend fun verificationNotices(): List<dev.ide.ui.backend.UiVerificationNotice> =
+        withContext(storeIo) { moderationState.notices() }
+
+    override suspend fun markVerificationNoticesRead(ids: List<String>) {
+        withContext(storeIo) { moderationState.markNoticesRead(ids) }
+    }
+
+    override suspend fun requestVerificationRenewal(note: String?): String? =
+        withContext(storeIo) { moderationState.requestRenewal(note) }
+
     override suspend fun managedPublishers(query: String?): dev.ide.ui.backend.UiPublisherPage =
         withContext(storeIo) { moderationState.publishers(query) }
 
