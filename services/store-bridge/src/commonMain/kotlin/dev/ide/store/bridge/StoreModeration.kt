@@ -109,6 +109,24 @@ class StoreModeration(private val moderation: StoreModerationService) {
         moderation.markVerificationNoticesRead(ids)
     }
 
+    /** Verification requests waiting for an admin. Empty when they could not be read. */
+    fun renewalRequests(): List<dev.ide.ui.backend.UiRenewalRequest> =
+        when (val r = moderation.renewalRequests()) {
+            is StoreResult.Ok -> r.value.map {
+                dev.ide.ui.backend.UiRenewalRequest(
+                    it.id, it.userId, it.handle, it.displayName, it.note, it.createdAt, it.verified, it.verifiedUntil,
+                )
+            }
+            else -> emptyList()
+        }
+
+    /** Null when it went; otherwise the sentence to show. */
+    fun markRenewalHandled(id: String): String? = when (val r = moderation.markRenewalHandled(id)) {
+        is StoreResult.Ok -> null
+        is StoreResult.Unavailable -> r.reason
+        is StoreResult.Failed -> r.message
+    }
+
     /** Null when it went; otherwise the sentence to show. */
     fun requestRenewal(note: String?): String? = when (val r = moderation.requestRenewal(note)) {
         is StoreResult.Ok -> null
