@@ -253,7 +253,7 @@ fun BuildAdInterstitial(backend: IdeBackend, ads: AdController?) {
                 }
                 val shownProps = if (waitedMs > 0) mapOf("waited_ms" to waitedMs.toString()) else emptyMap()
                 if (ads.showInterstitial("build", shownProps)) pacing.shown()
-                else ads.interstitialSkipped("not_ready", state, ads.host.interstitialFailureDetail.takeIf { state.startsWith("failed_") })
+                else ads.interstitialSkipped("not_ready", state)
             }
     }
 
