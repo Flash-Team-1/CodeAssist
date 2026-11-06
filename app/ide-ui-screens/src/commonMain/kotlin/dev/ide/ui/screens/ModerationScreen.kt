@@ -512,7 +512,7 @@ private fun RenewalList(
         val status = when {
             !r.verified -> stringResource(Res.string.requests_status_unverified)
             r.verifiedUntil == null -> stringResource(Res.string.requests_status_forever)
-            else -> stringResource(Res.string.requests_status_verified_until, r.verifiedUntil.take(10))
+            else -> stringResource(Res.string.requests_status_verified_until, r.verifiedUntil.orEmpty().take(10))
         }
         AlertDialog(
             onDismissRequest = { open = null },
