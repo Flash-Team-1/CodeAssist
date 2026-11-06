@@ -1541,6 +1541,12 @@ interface StoreService {
     suspend fun requestVerificationRenewal(note: String? = null): String? =
         "Renewal is not available in this build"
 
+    /** Verification requests waiting for an admin. Moderators only. */
+    suspend fun renewalRequests(): List<UiRenewalRequest> = emptyList()
+
+    /** Null when it went; otherwise the sentence to show. */
+    suspend fun markRenewalHandled(id: String): String? = "Not available in this build"
+
     /** Publishers for the Verify tab, optionally filtered by name or handle. Moderators only. */
     suspend fun managedPublishers(query: String? = null): UiPublisherPage =
         UiPublisherPage(error = "Moderation is not available in this build")
