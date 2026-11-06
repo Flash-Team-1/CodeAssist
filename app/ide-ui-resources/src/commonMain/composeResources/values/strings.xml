@@ -924,6 +924,11 @@ We never collect your code, file or project names, what you type, or anything th
     <string name="verify_custom_label">Days (1 to 3650)</string>
     <string name="verify_custom_button">Verify for these days</string>
     <string name="verify_cancel">Cancel</string>
+    <string name="verify_notice_title">Your verification is ending soon</string>
+    <string name="verify_notice_days">%1$d days left</string>
+    <string name="verify_notice_renew">Renew</string>
+    <string name="verify_notice_sent">Request sent</string>
+    <string name="verify_notice_dismiss">Got it</string>
     <string name="verify_empty">No publishers in the store yet.</string>
     <string name="moderation_queue_clear">Nothing is waiting for review.</string>
     <string name="moderation_recent">Recent decisions</string>
