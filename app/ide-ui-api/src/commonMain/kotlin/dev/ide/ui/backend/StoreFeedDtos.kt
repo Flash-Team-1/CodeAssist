@@ -719,3 +719,15 @@ data class UiPublisherProfile(
     /** Set when the profile could not be loaded; shown verbatim. Distinct from "no such publisher". */
     val error: String? = null,
 )
+
+/** A verification request waiting for an admin. */
+data class UiRenewalRequest(
+    val id: String,
+    val userId: String,
+    val handle: String,
+    val displayName: String,
+    val note: String?,
+    val createdAt: String,
+    val verified: Boolean,
+    val verifiedUntil: String?,
+)
