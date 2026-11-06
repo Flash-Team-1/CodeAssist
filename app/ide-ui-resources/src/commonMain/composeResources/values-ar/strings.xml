@@ -996,6 +996,10 @@
     <string name="verify_notice_renew">جدّد</string>
     <string name="verify_notice_sent">اتبعت الطلب</string>
     <string name="verify_notice_dismiss">تمام</string>
+    <string name="verify_request_title">وثّق حسابك</string>
+    <string name="verify_request_body">الناشرين الموثّقين بياخدوا شارة على بروفايلهم وفي المتجر. ابعت طلب والأدمن هيراجع حسابك.</string>
+    <string name="verify_request_button">اطلب التوثيق</string>
+    <string name="verify_request_later">بعدين</string>
     <string name="verify_empty">مفيش ناشرين في المتجر لسه.</string>
     <string name="moderation_queue_clear">لا شيء ينتظر المراجعة.</string>
     <string name="moderation_recent">القرارات الأخيرة</string>
