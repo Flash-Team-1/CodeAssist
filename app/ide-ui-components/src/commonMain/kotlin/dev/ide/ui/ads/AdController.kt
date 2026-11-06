@@ -23,6 +23,10 @@ const val ADS_ENABLED_STAMP_PREF = "ads.enabled.stamp"
  *  which they can't be turned off again. Absent for an install that has not been reset since this shipped. */
 const val ADS_OFF_LOCK_SINCE_PREF = "ads.offLock.since"
 
+/** Whether the account was verified the last time the app checked. While it is, no ads show at all and the
+ *  ad-removal toggle is hidden; when it stops being verified, ads come back as after a fresh install. */
+const val ADS_VERIFIED_PREF = "ads.verified"
+
 /** How long after an install or update ads stay on before the user can turn them off again: 24 hours. */
 const val ADS_OFF_LOCK_MS: Long = 24L * 60 * 60 * 1000
 
@@ -68,14 +72,39 @@ class AdController(
     )
         private set
 
-    /** Ads render only when the host has an ad network AND the user hasn't turned them off. */
-    val adsActive: Boolean get() = host.available && adsEnabled
+    /** True while the signed-in publisher is verified: they see no ads and cannot change the ad setting. Kept
+     *  in storage, so it holds on a restart before the account is checked again. */
+    var verifiedAdFree by mutableStateOf(backend.settings.preference(ADS_VERIFIED_PREF) == "true")
+        private set
+
+    /** Ads render only when the host has an ad network, the user hasn't turned them off, and the account is
+     *  not verified. */
+    val adsActive: Boolean get() = host.available && adsEnabled && !verifiedAdFree
 
     /** Full-screen ads show only while ads are active AND the user hasn't turned full-screen ones off. */
     val interstitialsActive: Boolean get() = adsActive && interstitialsEnabled
 
     /** Whether to show the ad on/off control (only where an ad network exists — i.e. Android, not desktop). */
-    val manageable: Boolean get() = host.available
+    val manageable: Boolean get() = host.available && !verifiedAdFree
+
+    /**
+     * Called with the account's verification state, on launch and after sign-in. Verified: ads are off for as long
+     * as it lasts, and the ad-removal choice is cancelled (ads stay "on" underneath, so nothing is left removed).
+     * Verification ends: the app behaves as it does after a fresh install, with ads on and the 24-hour turn-off
+     * lock starting now.
+     */
+    fun onVerificationKnown(verified: Boolean) {
+        if (verified == verifiedAdFree) return
+        backend.settings.setPreference(ADS_VERIFIED_PREF, verified.toString())
+        verifiedAdFree = verified
+        adsEnabled = true
+        backend.settings.setPreference(ADS_ENABLED_PREF, "true")
+        interstitialsEnabled = true
+        backend.settings.setPreference(INTERSTITIALS_ENABLED_PREF, "true")
+        if (!verified) {
+            backend.settings.setPreference(ADS_OFF_LOCK_SINCE_PREF, nowMs().toString())
+        }
+    }
 
     /**
      * Whether to surface a persistent "Manage ad consent" entry (UMP privacy options, EEA/UK). Reads the host's
@@ -113,6 +142,7 @@ class AdController(
      * them off is refused while [offLocked]; returns whether the choice was applied.
      */
     fun updateAdsEnabled(enabled: Boolean, via: String = "settings"): Boolean {
+        if (verifiedAdFree) return false
         if (!enabled && adsEnabled && offLocked) return false
         if (enabled != adsEnabled) track(ADS_SETTING, mapOf("setting" to "all", "on" to enabled.flag(), "via" to via))
         adsEnabled = enabled
@@ -125,6 +155,7 @@ class AdController(
      * refused while [offLocked]; returns whether the choice was applied.
      */
     fun updateInterstitialsEnabled(enabled: Boolean, via: String = "settings"): Boolean {
+        if (verifiedAdFree) return false
         if (!enabled && interstitialsEnabled && offLocked) return false
         if (enabled != interstitialsEnabled) {
             track(ADS_SETTING, mapOf("setting" to "fullscreen", "on" to enabled.flag(), "via" to via))
@@ -172,16 +203,10 @@ class AdController(
 
     /**
      * A long build reached the point where it could have shown an ad and didn't, because of [reason]. For
-     * `not_ready`, [state] is the host's [AdHost.interstitialState] at that moment and [detail] its
-     * [AdHost.interstitialFailureDetail] when that state is a failed load.
+     * `not_ready`, [state] is the host's [AdHost.interstitialState] at that moment.
      */
-    fun interstitialSkipped(reason: String, state: String? = null, detail: String? = null) =
-        track(
-            AD_SKIPPED,
-            mapOf("trigger" to "build", "reason" to reason) +
-                (state?.let { mapOf("state" to it) } ?: emptyMap()) +
-                (detail?.let { mapOf("detail" to it) } ?: emptyMap()),
-        )
+    fun interstitialSkipped(reason: String, state: String? = null) =
+        track(AD_SKIPPED, mapOf("trigger" to "build", "reason" to reason) + (state?.let { mapOf("state" to it) } ?: emptyMap()))
 
     private fun track(event: String, props: Map<String, String>) = backend.diagnostics.track(event, props)
 
