@@ -1,6 +1,12 @@
 package dev.ide.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import dev.ide.ui.components.SupportingOnContainer
@@ -52,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ide.ui.backend.IdeBackend
+import dev.ide.ui.backend.UiVerificationNotice
 import dev.ide.ui.backend.UiMyProfile
 import dev.ide.ui.backend.UiPublishedItem
 import dev.ide.ui.backend.UiStoreSubmission
@@ -437,6 +446,9 @@ private fun YouPage(
                 Spacer(Modifier.height(12.dp))
             }
         }
+        item("verification") {
+            VerificationNoticeCard(backend)
+        }
         item("account") {
             Spacer(Modifier.height(16.dp))
             ProfileSectionHeader(stringResource(Res.string.you_account))
@@ -452,6 +464,141 @@ private fun YouPage(
             }
             Spacer(Modifier.height(32.dp))
         }
+    }
+}
+
+/**
+ * The verification reminder: a ring that shows the days left out of five, a short line, and a small Renew
+ * button that asks the admin.
+ *
+ * It only appears while a reminder is due. The server picks a random time each day in the last five days,
+ * so it does not show up at the same hour every time. "Got it" marks the reminder read so it stays away.
+ */
+@Composable
+private fun VerificationNoticeCard(backend: IdeBackend) {
+    val c = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    var notice by remember { mutableStateOf<UiVerificationNotice?>(null) }
+    var visible by remember { mutableStateOf(false) }
+    var renewed by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val due = runCatching { backend.store.verificationNotices() }
+            .getOrDefault(emptyList())
+            .firstOrNull { !it.read }
+        if (due != null) {
+            notice = due
+            visible = true
+        }
+    }
+
+    fun dismiss() {
+        val id = notice?.id
+        visible = false
+        if (id != null) scope.launch { runCatching { backend.store.markVerificationNoticesRead(listOf(id)) } }
+    }
+
+    fun renew() {
+        if (sending || renewed) return
+        sending = true
+        error = null
+        scope.launch {
+            val failure = runCatching { backend.store.requestVerificationRenewal(null) }
+                .getOrElse { it.message ?: "Could not send the request" }
+            sending = false
+            if (failure == null) renewed = true else error = failure
+        }
+    }
+
+    notice?.let { n ->
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = c.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+            ) {
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    DaysRing(daysLeft = n.daysLeft, total = 5, size = 60.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(Res.string.verify_notice_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = c.onSurface,
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            stringResource(Res.string.verify_notice_days, n.daysLeft),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.onSurfaceVariant,
+                        )
+                        error?.let {
+                            Spacer(Modifier.height(4.dp))
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = c.error)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (renewed) {
+                                Surface(shape = RoundedCornerShape(50), color = c.primaryContainer) {
+                                    Text(
+                                        stringResource(Res.string.verify_notice_sent),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = c.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    )
+                                }
+                            } else {
+                                OutlinedButton(onClick = { renew() }, enabled = !sending) {
+                                    Text(stringResource(Res.string.verify_notice_renew))
+                                }
+                            }
+                            TextButton(onClick = { dismiss() }) {
+                                Text(stringResource(Res.string.verify_notice_dismiss))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A ring that fills by the days left out of [total], with the number in the middle. */
+@Composable
+private fun DaysRing(daysLeft: Int, total: Int, size: Dp) {
+    val c = MaterialTheme.colorScheme
+    val fraction = daysLeft.coerceIn(0, total).toFloat() / total
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 6.dp.toPx()
+            drawArc(
+                c.surfaceContainerHighest,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(stroke),
+            )
+            drawArc(
+                c.primary,
+                startAngle = -90f,
+                sweepAngle = 360f * fraction,
+                useCenter = false,
+                style = Stroke(stroke, cap = StrokeCap.Round),
+            )
+        }
+        Text(daysLeft.toString(), style = MaterialTheme.typography.titleMedium, color = c.onSurface)
     }
 }
 
