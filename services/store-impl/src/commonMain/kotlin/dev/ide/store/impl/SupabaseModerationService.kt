@@ -1,6 +1,7 @@
 package dev.ide.store.impl
 
 import dev.ide.platform.JsonReader
+import dev.ide.store.ManagedPublisher
 import dev.ide.store.PendingSubmission
 import dev.ide.store.ReportedContent
 import dev.ide.store.ReviewQueue
@@ -330,6 +331,26 @@ class SupabaseModerationService(
             .firstNotNullOfOrNull { JsonReader.str(j, it)?.takeIf { s -> s.isNotBlank() } }
     }
 
+    override fun managedPublishers(query: String?, limit: Int): StoreResult<List<ManagedPublisher>> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        val search = if (query.isNullOrBlank()) "null" else q(query.trim())
+        val body = """{"p_query":$search,"p_limit":$limit}"""
+        return when (val r = rpc("store_admin_list_publishers", body, token)) {
+            is StoreResult.Ok -> StoreResult.Ok(
+                JsonReader.arr(JsonReader.parseOrNull(r.value)).mapNotNull(::parsePublisher),
+            )
+            is StoreResult.Unavailable -> StoreResult.Unavailable(r.reason)
+            is StoreResult.Failed -> StoreResult.Failed(r.message, r.status)
+        }
+    }
+
+    override fun setVerified(userId: String, mode: String, days: Int?): StoreResult<Unit> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        val daysJson = days?.toString() ?: "null"
+        val body = """{"p_user":${q(userId)},"p_mode":${q(mode)},"p_days":$daysJson}"""
+        return unit(rpc("store_admin_set_verified", body, token))
+    }
+
     private fun unit(result: StoreResult<String>): StoreResult<Unit> = when (result) {
         is StoreResult.Ok -> StoreResult.Ok(Unit)
         is StoreResult.Unavailable -> StoreResult.Unavailable(result.reason)
@@ -418,6 +439,20 @@ class SupabaseModerationService(
                     }
                 }
             }
+        }
+
+        internal fun parsePublisher(value: Any?): ManagedPublisher? {
+            val id = JsonReader.str(value, "id") ?: return null
+            val handle = JsonReader.str(value, "handle") ?: return null
+            return ManagedPublisher(
+                userId = id,
+                handle = handle,
+                displayName = JsonReader.str(value, "displayName").orEmpty(),
+                avatarUrl = JsonReader.str(value, "avatarUrl"),
+                verified = JsonReader.bool(value, "verified"),
+                verifiedUntil = JsonReader.str(value, "verifiedUntil"),
+                items = JsonReader.int(value, "items"),
+            )
         }
 
         internal fun parseReport(value: Any?): ReportedContent? {
