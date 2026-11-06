@@ -2,6 +2,7 @@ package dev.ide.store.impl
 
 import dev.ide.platform.JsonReader
 import dev.ide.store.ManagedPublisher
+import dev.ide.store.RenewalRequest
 import dev.ide.store.PendingSubmission
 import dev.ide.store.ReportedContent
 import dev.ide.store.ReviewQueue
@@ -375,6 +376,22 @@ class SupabaseModerationService(
         return unit(rpc("store_request_renewal", """{"p_note":$text}""", token))
     }
 
+    override fun renewalRequests(limit: Int): StoreResult<List<RenewalRequest>> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        return when (val r = rpc("store_admin_renewal_requests", """{"p_limit":$limit}""", token)) {
+            is StoreResult.Ok -> StoreResult.Ok(
+                JsonReader.arr(JsonReader.parseOrNull(r.value)).mapNotNull(::parseRenewal),
+            )
+            is StoreResult.Unavailable -> StoreResult.Unavailable(r.reason)
+            is StoreResult.Failed -> StoreResult.Failed(r.message, r.status)
+        }
+    }
+
+    override fun markRenewalHandled(id: String): StoreResult<Unit> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        return unit(rpc("store_admin_handle_renewal", """{"p_id":${q(id)}}""", token))
+    }
+
     private fun unit(result: StoreResult<String>): StoreResult<Unit> = when (result) {
         is StoreResult.Ok -> StoreResult.Ok(Unit)
         is StoreResult.Unavailable -> StoreResult.Unavailable(result.reason)
@@ -474,6 +491,21 @@ class SupabaseModerationService(
                 read = JsonReader.bool(value, "read"),
                 verifiedUntil = JsonReader.str(value, "verifiedUntil"),
                 daysLeft = JsonReader.int(value, "daysLeft"),
+            )
+        }
+
+        internal fun parseRenewal(value: Any?): RenewalRequest? {
+            val id = JsonReader.str(value, "id") ?: return null
+            val userId = JsonReader.str(value, "userId") ?: return null
+            return RenewalRequest(
+                id = id,
+                userId = userId,
+                handle = JsonReader.str(value, "handle").orEmpty(),
+                displayName = JsonReader.str(value, "displayName").orEmpty(),
+                note = JsonReader.str(value, "note"),
+                createdAt = JsonReader.str(value, "createdAt").orEmpty(),
+                verified = JsonReader.bool(value, "verified"),
+                verifiedUntil = JsonReader.str(value, "verifiedUntil"),
             )
         }
 
