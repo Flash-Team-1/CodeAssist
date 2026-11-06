@@ -991,6 +991,11 @@
     <string name="verify_custom_label">عدد الأيام (من 1 لـ 3650)</string>
     <string name="verify_custom_button">وثّق لعدد الأيام دي</string>
     <string name="verify_cancel">إلغاء</string>
+    <string name="verify_notice_title">التوثيق بتاعك على وشك الانتهاء</string>
+    <string name="verify_notice_days">باقي %1$d يوم</string>
+    <string name="verify_notice_renew">جدّد</string>
+    <string name="verify_notice_sent">اتبعت الطلب</string>
+    <string name="verify_notice_dismiss">تمام</string>
     <string name="verify_empty">مفيش ناشرين في المتجر لسه.</string>
     <string name="moderation_queue_clear">لا شيء ينتظر المراجعة.</string>
     <string name="moderation_recent">القرارات الأخيرة</string>
