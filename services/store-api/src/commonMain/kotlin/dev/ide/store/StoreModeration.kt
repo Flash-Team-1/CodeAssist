@@ -135,6 +135,18 @@ data class ManagedPublisher(
 )
 
 /**
+ * A verification reminder for the signed-in publisher. [dueAt] is ISO-8601 UTC; [daysLeft] is whole days.
+ */
+data class VerificationNotice(
+    val id: String,
+    val body: String,
+    val dueAt: String,
+    val read: Boolean,
+    val verifiedUntil: String?,
+    val daysLeft: Int,
+)
+
+/**
  * The moderation port.
  *
  * Reads and writes both need the moderator's session, so an implementation holds the account service the
@@ -230,6 +242,18 @@ interface StoreModerationService {
      * `days` needs [days] between 1 and 3650. The database refuses anything else too.
      */
     fun setVerified(userId: String, mode: String, days: Int? = null): StoreResult<Unit> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /** Reminders that are due now for the signed-in publisher, newest first. */
+    fun verificationNotices(): StoreResult<List<VerificationNotice>> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /** Mark reminders as read so they stop showing. */
+    fun markVerificationNoticesRead(ids: List<String>): StoreResult<Unit> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /** Ask the admin to renew the signed-in publisher's verification. One request per week. */
+    fun requestRenewal(note: String?): StoreResult<Unit> =
         StoreResult.Unavailable("Moderation is not available in this build")
 
     companion object {
