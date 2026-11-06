@@ -4,15 +4,16 @@ import dev.ide.store.ManagedPublisher
 import dev.ide.store.PendingSubmission
 import dev.ide.store.StoreModerationService
 import dev.ide.store.StoreResult
-import dev.ide.ui.backend.UiManagedPublisher
-import dev.ide.ui.backend.UiPublisherPage
 import dev.ide.ui.backend.UiListingEdit
+import dev.ide.ui.backend.UiManagedPublisher
 import dev.ide.ui.backend.UiModerationQueue
 import dev.ide.ui.backend.UiPendingSubmission
+import dev.ide.ui.backend.UiPublisherPage
 import dev.ide.ui.backend.UiReportedContent
 import dev.ide.ui.backend.UiSubmissionFile
 import dev.ide.ui.backend.UiSubmissionListing
 import dev.ide.ui.backend.UiSubmissionSubmitter
+import dev.ide.ui.backend.UiVerificationNotice
 
 /**
  * Moderation, engine-side.
@@ -97,6 +98,23 @@ class StoreModeration(private val moderation: StoreModerationService) {
             is StoreResult.Unavailable -> result.reason
             is StoreResult.Failed -> result.message
         }
+
+    /** Reminders to show. Empty when there are none, or when they could not be read: the card just stays hidden. */
+    fun notices(): List<UiVerificationNotice> = when (val r = moderation.verificationNotices()) {
+        is StoreResult.Ok -> r.value.map { UiVerificationNotice(it.id, it.body, it.dueAt, it.read, it.verifiedUntil, it.daysLeft) }
+        else -> emptyList()
+    }
+
+    fun markNoticesRead(ids: List<String>) {
+        moderation.markVerificationNoticesRead(ids)
+    }
+
+    /** Null when it went; otherwise the sentence to show. */
+    fun requestRenewal(note: String?): String? = when (val r = moderation.requestRenewal(note)) {
+        is StoreResult.Ok -> null
+        is StoreResult.Unavailable -> r.reason
+        is StoreResult.Failed -> r.message
+    }
 
     private fun ManagedPublisher.toPublisherUi() = UiManagedPublisher(
         userId = userId,
