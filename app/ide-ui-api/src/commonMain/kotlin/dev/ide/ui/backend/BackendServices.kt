@@ -1531,6 +1531,16 @@ interface StoreService {
     suspend fun rejectSubmission(versionId: String, note: String): String? =
         "Moderation is not available in this build"
 
+    /** Verification reminders due now. Empty when there are none, or the account is not a publisher. */
+    suspend fun verificationNotices(): List<UiVerificationNotice> = emptyList()
+
+    /** Mark reminders as read so they stop showing. */
+    suspend fun markVerificationNoticesRead(ids: List<String>) {}
+
+    /** Ask for renewal. Null on success, or the sentence to show. */
+    suspend fun requestVerificationRenewal(note: String? = null): String? =
+        "Renewal is not available in this build"
+
     /** Publishers for the Verify tab, optionally filtered by name or handle. Moderators only. */
     suspend fun managedPublishers(query: String? = null): UiPublisherPage =
         UiPublisherPage(error = "Moderation is not available in this build")
