@@ -547,6 +547,16 @@ data class UiManagedPublisher(
     val items: Int = 0,
 )
 
+/** A verification reminder. [dueAt] and [verifiedUntil] are ISO times; [daysLeft] is whole days. */
+data class UiVerificationNotice(
+    val id: String,
+    val body: String,
+    val dueAt: String,
+    val read: Boolean,
+    val verifiedUntil: String?,
+    val daysLeft: Int,
+)
+
 /** The Verify tab's publishers, or the reason they could not be read. */
 data class UiPublisherPage(
     val publishers: List<UiManagedPublisher> = emptyList(),
