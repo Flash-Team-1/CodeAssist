@@ -119,6 +119,22 @@ data class ReportedContent(
 )
 
 /**
+ * A publisher as the Verify tab lists them.
+ *
+ * [verifiedUntil] is an ISO-8601 UTC time. It is null when the publisher is not verified, and also when
+ * they are verified for good.
+ */
+data class ManagedPublisher(
+    val userId: String,
+    val handle: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val verified: Boolean = false,
+    val verifiedUntil: String? = null,
+    val items: Int = 0,
+)
+
+/**
  * The moderation port.
  *
  * Reads and writes both need the moderator's session, so an implementation holds the account service the
@@ -202,6 +218,18 @@ interface StoreModerationService {
      * catalog source's own download cannot be reused because that one is anonymous and public-bucket only.
      */
     fun downloadObject(bucket: String, storagePath: String, intoPath: String): StoreResult<Unit> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /** Publishers for the Verify tab, newest verifications first. Moderators only. */
+    fun managedPublishers(query: String? = null, limit: Int = 100): StoreResult<List<ManagedPublisher>> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /**
+     * Verify [userId] for [days] ([mode] `days`), for good (`forever`), or take the verification away (`off`).
+     *
+     * `days` needs [days] between 1 and 3650. The database refuses anything else too.
+     */
+    fun setVerified(userId: String, mode: String, days: Int? = null): StoreResult<Unit> =
         StoreResult.Unavailable("Moderation is not available in this build")
 
     companion object {
