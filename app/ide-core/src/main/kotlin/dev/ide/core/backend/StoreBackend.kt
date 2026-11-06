@@ -700,6 +700,12 @@ internal class StoreBackend(
     override suspend fun rejectSubmission(versionId: String, note: String): String? =
         withContext(storeIo) { moderationState.reject(versionId, note) }
 
+    override suspend fun managedPublishers(query: String?): dev.ide.ui.backend.UiPublisherPage =
+        withContext(storeIo) { moderationState.publishers(query) }
+
+    override suspend fun setPublisherVerified(userId: String, mode: String, days: Int?): String? =
+        withContext(storeIo) { moderationState.setVerified(userId, mode, days) }
+
     override suspend fun openReports(): List<dev.ide.ui.backend.UiReportedContent> =
         withContext(storeIo) { moderationState.reports() }
 
