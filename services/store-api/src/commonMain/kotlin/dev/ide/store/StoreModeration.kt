@@ -252,6 +252,14 @@ interface StoreModerationService {
     fun markVerificationNoticesRead(ids: List<String>): StoreResult<Unit> =
         StoreResult.Unavailable("Moderation is not available in this build")
 
+    /** Verification requests waiting for an admin, newest first. Moderators only. */
+    fun renewalRequests(limit: Int = 50): StoreResult<List<RenewalRequest>> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
+    /** Mark one request as handled, so it leaves the list. Moderators only. */
+    fun markRenewalHandled(id: String): StoreResult<Unit> =
+        StoreResult.Unavailable("Moderation is not available in this build")
+
     /** Ask the admin to renew the signed-in publisher's verification. One request per week. */
     fun requestRenewal(note: String?): StoreResult<Unit> =
         StoreResult.Unavailable("Moderation is not available in this build")
@@ -260,3 +268,15 @@ interface StoreModerationService {
         val Unsupported: StoreModerationService = object : StoreModerationService {}
     }
 }
+
+/** A publisher's request for verification, waiting for an admin. */
+data class RenewalRequest(
+    val id: String,
+    val userId: String,
+    val handle: String,
+    val displayName: String,
+    val note: String?,
+    val createdAt: String,
+    val verified: Boolean,
+    val verifiedUntil: String?,
+)
