@@ -51,11 +51,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -449,6 +451,11 @@ private fun YouPage(
         item("verification") {
             VerificationNoticeCard(backend)
         }
+        if (!profile.verified) {
+            item("verification-request") {
+                VerificationRequestCard(backend)
+            }
+        }
         item("account") {
             Spacer(Modifier.height(16.dp))
             ProfileSectionHeader(stringResource(Res.string.you_account))
@@ -463,6 +470,83 @@ private fun YouPage(
                 )
             }
             Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Shown on your own profile while you are not verified: a gradient card in the app's own container colours,
+ * a short line on what verification gives, and a request button. The request goes to the admin, who decides
+ * in the Verify tab. It can be dismissed for this visit; it comes back next time you open the page.
+ */
+@Composable
+private fun VerificationRequestCard(backend: IdeBackend) {
+    val c = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    var dismissed by rememberSaveable { mutableStateOf(false) }
+    var sent by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    if (dismissed) return
+
+    fun request() {
+        if (sending || sent) return
+        sending = true
+        error = null
+        scope.launch {
+            val failure = runCatching { backend.store.requestVerificationRenewal(null) }
+                .getOrElse { it.message ?: "Could not send the request" }
+            sending = false
+            if (failure == null) sent = true else error = failure
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(c.primaryContainer, c.tertiaryContainer)))
+            .padding(18.dp),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Symbol(CaSymbols.verified, contentDescription = null, size = 26.dp, tint = c.onPrimaryContainer, filled = true)
+                Text(
+                    stringResource(Res.string.verify_request_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = c.onPrimaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { dismissed = true }) {
+                    Text(stringResource(Res.string.verify_request_later), color = c.onPrimaryContainer)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                stringResource(Res.string.verify_request_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.onPrimaryContainer.copy(alpha = 0.85f),
+            )
+            error?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = c.error)
+            }
+            Spacer(Modifier.height(12.dp))
+            if (sent) {
+                Surface(shape = RoundedCornerShape(50), color = c.onPrimaryContainer.copy(alpha = 0.12f)) {
+                    Text(
+                        stringResource(Res.string.verify_notice_sent),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = c.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
+            } else {
+                Button(onClick = { request() }, enabled = !sending) {
+                    Text(stringResource(Res.string.verify_request_button))
+                }
+            }
         }
     }
 }
