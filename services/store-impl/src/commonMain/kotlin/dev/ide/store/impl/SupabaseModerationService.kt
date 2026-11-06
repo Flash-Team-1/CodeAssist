@@ -10,6 +10,7 @@ import dev.ide.store.StoreResult
 import dev.ide.store.SubmissionFile
 import dev.ide.store.SubmissionListing
 import dev.ide.store.SubmissionSubmitter
+import dev.ide.store.VerificationNotice
 import dev.ide.store.impl.platform.StoreFs
 import dev.ide.store.impl.platform.StoreHttp
 import dev.ide.store.impl.platform.storeLog
@@ -351,6 +352,29 @@ class SupabaseModerationService(
         return unit(rpc("store_admin_set_verified", body, token))
     }
 
+    override fun verificationNotices(): StoreResult<List<VerificationNotice>> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        return when (val r = rpc("store_my_notifications", """{"p_limit":20}""", token)) {
+            is StoreResult.Ok -> StoreResult.Ok(
+                JsonReader.arr(JsonReader.parseOrNull(r.value)).mapNotNull(::parseNotice),
+            )
+            is StoreResult.Unavailable -> StoreResult.Unavailable(r.reason)
+            is StoreResult.Failed -> StoreResult.Failed(r.message, r.status)
+        }
+    }
+
+    override fun markVerificationNoticesRead(ids: List<String>): StoreResult<Unit> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        val list = ids.joinToString(",", "[", "]") { q(it) }
+        return unit(rpc("store_mark_notifications_read", """{"p_ids":$list}""", token))
+    }
+
+    override fun requestRenewal(note: String?): StoreResult<Unit> {
+        val token = accounts.bearer() ?: return StoreResult.Failed("Sign in first")
+        val text = if (note.isNullOrBlank()) "null" else q(note.trim())
+        return unit(rpc("store_request_renewal", """{"p_note":$text}""", token))
+    }
+
     private fun unit(result: StoreResult<String>): StoreResult<Unit> = when (result) {
         is StoreResult.Ok -> StoreResult.Ok(Unit)
         is StoreResult.Unavailable -> StoreResult.Unavailable(result.reason)
@@ -439,6 +463,18 @@ class SupabaseModerationService(
                     }
                 }
             }
+        }
+
+        internal fun parseNotice(value: Any?): VerificationNotice? {
+            val id = JsonReader.str(value, "id") ?: return null
+            return VerificationNotice(
+                id = id,
+                body = JsonReader.str(value, "body").orEmpty(),
+                dueAt = JsonReader.str(value, "dueAt").orEmpty(),
+                read = JsonReader.bool(value, "read"),
+                verifiedUntil = JsonReader.str(value, "verifiedUntil"),
+                daysLeft = JsonReader.int(value, "daysLeft"),
+            )
         }
 
         internal fun parsePublisher(value: Any?): ManagedPublisher? {
