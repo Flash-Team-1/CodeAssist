@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -170,6 +171,13 @@ fun CodeAssistApp(
         // Read once per composition of the root: a session that crosses midnight into the season picks it up
         // on the next settings change or launch, which is soon enough for a decoration.
         val season = if (app.settings.seasonalTouches) Season.current() else null
+        // Verified publishers see no ads. Check the account on launch and again after sign-in, so the ad state
+        // follows verification (it is also kept in storage, so a restart before the check still hides ads).
+        val signedInNow = backend.store.authState().collectAsState().value.signedIn
+        LaunchedEffect(signedInNow) {
+            if (!signedInNow) return@LaunchedEffect
+            runCatching { backend.store.myProfile() }.getOrNull()?.let { app.adController.onVerificationKnown(it.verified) }
+        }
         CompositionLocalProvider(
             LocalSeason provides season,
             LocalAds provides app.adController,
