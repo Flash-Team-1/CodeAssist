@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -46,6 +47,7 @@ import dev.ide.ui.backend.UiManagedPublisher
 import dev.ide.ui.backend.UiModerationQueue
 import dev.ide.ui.backend.UiPendingSubmission
 import dev.ide.ui.backend.UiPublisherPage
+import dev.ide.ui.backend.UiRenewalRequest
 import dev.ide.ui.backend.UiReportedContent
 import dev.ide.ui.components.Chip
 import dev.ide.ui.components.Eyebrow
@@ -100,6 +102,7 @@ fun ModerationScreen(
     var reports by remember { mutableStateOf<List<UiReportedContent>>(emptyList()) }
     var learnReports by remember { mutableStateOf<List<dev.ide.ui.backend.UiLearnReport>>(emptyList()) }
     var publishers by remember { mutableStateOf(UiPublisherPage()) }
+    var renewals by remember { mutableStateOf<List<UiRenewalRequest>>(emptyList()) }
     // What the last decision said. Kept as the backend wrote it: "was already approved" is what a second
     // moderator sees, and paraphrasing it would lose the only part that explains anything.
     var notice by remember { mutableStateOf<String?>(null) }
@@ -124,6 +127,7 @@ fun ModerationScreen(
         learnReports = runCatching { backend.learn.reportQueue() }.getOrNull().orEmpty()
         publishers = runCatching { backend.store.managedPublishers() }
             .getOrElse { UiPublisherPage(error = it.message ?: "The publishers could not be read") }
+        renewals = runCatching { backend.store.renewalRequests() }.getOrDefault(emptyList())
     }
 
     /** Run a decision, show whatever it said, and reload either way: the queue moved regardless. */
@@ -149,7 +153,7 @@ fun ModerationScreen(
                 return@Column
             }
             Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
-                ModerationTabs(tab, queue.pendingCount, reports.size, learnReports.size) { tab = it }
+                ModerationTabs(tab, queue.pendingCount, reports.size, learnReports.size, renewals.size) { tab = it }
                 if (queue.loading || working) LinearProgressIndicator(Modifier.fillMaxWidth())
                 notice?.let { Notice(it) { notice = null } }
 
@@ -193,6 +197,19 @@ fun ModerationScreen(
                         enabled = !working,
                         onSet = { publisher, mode, days ->
                             decide { backend.store.setPublisherVerified(publisher.userId, mode, days) }
+                        },
+                    )
+
+                    ModerationTab.Requests -> RenewalList(
+                        requests = renewals,
+                        enabled = !working,
+                        onOpenPublisher = onOpenPublisher,
+                        onDone = { id -> decide { backend.store.markRenewalHandled(id) } },
+                        onVerify = { req ->
+                            decide {
+                                val failure = backend.store.setPublisherVerified(req.userId, "days", 30)
+                                failure ?: backend.store.markRenewalHandled(req.id)
+                            }
                         },
                     )
 
@@ -435,7 +452,105 @@ private fun NotAModerator() {
     }
 }
 
-private enum class ModerationTab { Queue, Reports, Learn, Verify }
+private enum class ModerationTab { Queue, Reports, Learn, Verify, Requests }
+
+/**
+ * Verification requests from publishers who asked for one. Tap a row for their details, then open their
+ * profile, verify them for 30 days, or mark the request done without verifying.
+ */
+@Composable
+private fun RenewalList(
+    requests: List<UiRenewalRequest>,
+    enabled: Boolean,
+    onOpenPublisher: (String) -> Unit,
+    onDone: (String) -> Unit,
+    onVerify: (UiRenewalRequest) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf<UiRenewalRequest?>(null) }
+    if (requests.isEmpty()) {
+        Text(
+            stringResource(Res.string.requests_empty),
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+        )
+        return
+    }
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(requests, key = { it.id }) { r ->
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = c.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth().clickable { open = r },
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "${r.displayName.ifBlank { r.handle }}  @${r.handle}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = c.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        r.note?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.requests_no_note),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+
+    open?.let { r ->
+        val status = when {
+            !r.verified -> stringResource(Res.string.requests_status_unverified)
+            r.verifiedUntil == null -> stringResource(Res.string.requests_status_forever)
+            else -> stringResource(Res.string.requests_status_verified_until, r.verifiedUntil.take(10))
+        }
+        AlertDialog(
+            onDismissRequest = { open = null },
+            title = { Text(r.displayName.ifBlank { r.handle }) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("@${r.handle}", style = MaterialTheme.typography.bodyMedium, color = c.onSurfaceVariant)
+                    Text(status, style = MaterialTheme.typography.bodyMedium, color = c.onSurface)
+                    Text(
+                        stringResource(Res.string.requests_sent_at, r.createdAt.take(10)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.onSurfaceVariant,
+                    )
+                    Text(
+                        r.note?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.requests_no_note),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.onSurface,
+                    )
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(enabled = enabled, onClick = { open = null; onVerify(r) }) {
+                        Text(stringResource(Res.string.requests_verify_month))
+                    }
+                    TextButton(enabled = enabled, onClick = { open = null; onDone(r.id) }) {
+                        Text(stringResource(Res.string.requests_done))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { open = null; onOpenPublisher(r.handle) }) {
+                    Text(stringResource(Res.string.requests_open_profile))
+                }
+            },
+        )
+    }
+}
 
 @Composable
 private fun ModerationTabs(
@@ -443,6 +558,7 @@ private fun ModerationTabs(
     waiting: Int,
     reports: Int,
     learnReports: Int,
+    requests: Int,
     onSelect: (ModerationTab) -> Unit,
 ) {
     LazyRow(
@@ -458,12 +574,14 @@ private fun ModerationTabs(
                 ModerationTab.Reports -> reports
                 ModerationTab.Learn -> learnReports
                 ModerationTab.Verify -> 0
+                ModerationTab.Requests -> requests
             }
             val label = when (t) {
                 ModerationTab.Queue -> stringResource(Res.string.moderation_tab_queue)
                 ModerationTab.Reports -> stringResource(Res.string.moderation_tab_reports)
                 ModerationTab.Learn -> stringResource(Res.string.learn_reports_title)
                 ModerationTab.Verify -> stringResource(Res.string.moderation_tab_verify)
+                ModerationTab.Requests -> stringResource(Res.string.moderation_tab_requests)
             }
             PillChip(
                 label = if (count > 0) "$label ($count)" else label,
