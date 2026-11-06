@@ -536,6 +536,23 @@ data class UiReportedContent(
     val reviewHidden: Boolean = false,
 )
 
+/** One publisher on the Verify tab. [verifiedUntil] is an ISO time; null when not verified or verified for good. */
+data class UiManagedPublisher(
+    val userId: String,
+    val handle: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val verified: Boolean = false,
+    val verifiedUntil: String? = null,
+    val items: Int = 0,
+)
+
+/** The Verify tab's publishers, or the reason they could not be read. */
+data class UiPublisherPage(
+    val publishers: List<UiManagedPublisher> = emptyList(),
+    val error: String? = null,
+)
+
 /** [message] is shown verbatim on failure: the backend's quota and validation messages are user-facing. */
 data class UiSubmitResult(
     val success: Boolean,
