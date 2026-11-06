@@ -42,8 +42,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.ide.ui.backend.IdeBackend
 import dev.ide.ui.backend.UiListingEdit
+import dev.ide.ui.backend.UiManagedPublisher
 import dev.ide.ui.backend.UiModerationQueue
 import dev.ide.ui.backend.UiPendingSubmission
+import dev.ide.ui.backend.UiPublisherPage
 import dev.ide.ui.backend.UiReportedContent
 import dev.ide.ui.components.Chip
 import dev.ide.ui.components.Eyebrow
@@ -97,6 +99,7 @@ fun ModerationScreen(
     var queue by remember { mutableStateOf(UiModerationQueue(loading = true)) }
     var reports by remember { mutableStateOf<List<UiReportedContent>>(emptyList()) }
     var learnReports by remember { mutableStateOf<List<dev.ide.ui.backend.UiLearnReport>>(emptyList()) }
+    var publishers by remember { mutableStateOf(UiPublisherPage()) }
     // What the last decision said. Kept as the backend wrote it: "was already approved" is what a second
     // moderator sees, and paraphrasing it would lose the only part that explains anything.
     var notice by remember { mutableStateOf<String?>(null) }
@@ -119,6 +122,8 @@ fun ModerationScreen(
             .getOrElse { UiModerationQueue(error = it.message ?: "The review queue could not be read") }
         reports = runCatching { backend.store.openReports() }.getOrDefault(emptyList())
         learnReports = runCatching { backend.learn.reportQueue() }.getOrNull().orEmpty()
+        publishers = runCatching { backend.store.managedPublishers() }
+            .getOrElse { UiPublisherPage(error = it.message ?: "The publishers could not be read") }
     }
 
     /** Run a decision, show whatever it said, and reload either way: the queue moved regardless. */
@@ -182,6 +187,15 @@ fun ModerationScreen(
                         },
                     )
 
+                    ModerationTab.Verify -> VerifyList(
+                        backend = backend,
+                        page = publishers,
+                        enabled = !working,
+                        onSet = { publisher, mode, days ->
+                            decide { backend.store.setPublisherVerified(publisher.userId, mode, days) }
+                        },
+                    )
+
                     ModerationTab.Learn -> LearnReportList(
                         reports = learnReports,
                         enabled = !working,
@@ -226,6 +240,174 @@ fun ModerationScreen(
     }
 }
 
+/** The publishers in the store, with a Verify button that asks for how long. */
+@Composable
+private fun VerifyList(
+    backend: IdeBackend,
+    page: UiPublisherPage,
+    enabled: Boolean,
+    onSet: (UiManagedPublisher, String, Int?) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var choosing by remember { mutableStateOf<UiManagedPublisher?>(null) }
+    val failure = page.error
+    if (failure != null) {
+        Text(
+            failure,
+            style = MaterialTheme.typography.bodyMedium,
+            color = c.error,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+        )
+        return
+    }
+    if (page.publishers.isEmpty()) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 44.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Symbol(CaSymbols.checkCircle, contentDescription = null, size = 34.dp, tint = c.onSurfaceVariant)
+            Text(
+                stringResource(Res.string.verify_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+        itemsKeyed(page.publishers, key = { it.userId }) { publisher ->
+            val name = publisher.displayName.ifBlank { publisher.handle }
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = c.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+            ) {
+                Row(
+                    Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ProfileAvatar(backend = backend, name = name, avatarUrl = publisher.avatarUrl, size = 44.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = c.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "@${publisher.handle}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        VerifyStatus(publisher)
+                    }
+                    OutlinedButton(onClick = { choosing = publisher }, enabled = enabled) {
+                        Text(
+                            stringResource(
+                                if (publisher.verified) Res.string.verify_change else Res.string.verify_button,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    choosing?.let { target ->
+        VerifyDialog(
+            publisher = target,
+            onDismiss = { choosing = null },
+            onPick = { mode, days ->
+                choosing = null
+                onSet(target, mode, days)
+            },
+        )
+    }
+}
+
+/** Verified forever, verified until a date, or not verified. */
+@Composable
+private fun VerifyStatus(publisher: UiManagedPublisher) {
+    val c = MaterialTheme.colorScheme
+    val until = publisher.verifiedUntil
+    val label = when {
+        !publisher.verified -> stringResource(Res.string.verify_none)
+        until == null -> stringResource(Res.string.verify_forever)
+        else -> stringResource(Res.string.verify_until, until.take(10))
+    }
+    Chip(
+        label,
+        fill = if (publisher.verified) c.primaryContainer else c.surfaceContainerHigh,
+        textColor = if (publisher.verified) c.onPrimaryContainer else c.onSurfaceVariant,
+    )
+}
+
+/**
+ * How long to verify for. Presets cover the usual cases; the field covers the rest, between 1 and 3650 days,
+ * which is the same range the backend accepts.
+ */
+@Composable
+private fun VerifyDialog(
+    publisher: UiManagedPublisher,
+    onDismiss: () -> Unit,
+    onPick: (String, Int?) -> Unit,
+) {
+    var custom by remember { mutableStateOf("") }
+    val customDays = custom.toIntOrNull()?.takeIf { it in 1..3650 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(
+                    Res.string.verify_dialog_title,
+                    publisher.displayName.ifBlank { publisher.handle },
+                ),
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onPick("days", 30) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(Res.string.verify_one_month))
+                }
+                OutlinedButton(onClick = { onPick("days", 60) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(Res.string.verify_two_months))
+                }
+                OutlinedButton(onClick = { onPick("forever", null) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(Res.string.verify_forever_button))
+                }
+                if (publisher.verified) {
+                    TextButton(onClick = { onPick("off", null) }) {
+                        Text(stringResource(Res.string.verify_remove))
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value = custom,
+                    onValueChange = { typed -> custom = typed.filter { it.isDigit() }.take(4) },
+                    label = { Text(stringResource(Res.string.verify_custom_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { customDays?.let { onPick("days", it) } },
+                enabled = customDays != null,
+            ) { Text(stringResource(Res.string.verify_custom_button)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.verify_cancel)) }
+        },
+    )
+}
+
 /**
  * What someone who is not a moderator sees.
  *
@@ -253,7 +435,7 @@ private fun NotAModerator() {
     }
 }
 
-private enum class ModerationTab { Queue, Reports, Learn }
+private enum class ModerationTab { Queue, Reports, Learn, Verify }
 
 @Composable
 private fun ModerationTabs(
@@ -275,11 +457,13 @@ private fun ModerationTabs(
                 ModerationTab.Queue -> waiting
                 ModerationTab.Reports -> reports
                 ModerationTab.Learn -> learnReports
+                ModerationTab.Verify -> 0
             }
             val label = when (t) {
                 ModerationTab.Queue -> stringResource(Res.string.moderation_tab_queue)
                 ModerationTab.Reports -> stringResource(Res.string.moderation_tab_reports)
                 ModerationTab.Learn -> stringResource(Res.string.learn_reports_title)
+                ModerationTab.Verify -> stringResource(Res.string.moderation_tab_verify)
             }
             PillChip(
                 label = if (count > 0) "$label ($count)" else label,
