@@ -1,8 +1,11 @@
 package dev.ide.store.bridge
 
+import dev.ide.store.ManagedPublisher
 import dev.ide.store.PendingSubmission
 import dev.ide.store.StoreModerationService
 import dev.ide.store.StoreResult
+import dev.ide.ui.backend.UiManagedPublisher
+import dev.ide.ui.backend.UiPublisherPage
 import dev.ide.ui.backend.UiListingEdit
 import dev.ide.ui.backend.UiModerationQueue
 import dev.ide.ui.backend.UiPendingSubmission
@@ -76,6 +79,34 @@ class StoreModeration(private val moderation: StoreModerationService) {
         val submission = knownLock.withLock { known[versionId] } ?: return STALE
         return message(moderation.reject(submission, note))
     }
+
+    /** The Verify tab's publishers. Empty, with [UiPublisherPage.error] set, when they could not be read. */
+    fun publishers(query: String?): UiPublisherPage {
+        if (!available()) return UiPublisherPage(error = "Moderation is not available in this build")
+        return when (val result = moderation.managedPublishers(query)) {
+            is StoreResult.Ok -> UiPublisherPage(publishers = result.value.map { it.toPublisherUi() })
+            is StoreResult.Unavailable -> UiPublisherPage(error = result.reason)
+            is StoreResult.Failed -> UiPublisherPage(error = result.message)
+        }
+    }
+
+    /** Null when it went; otherwise the sentence to show. */
+    fun setVerified(userId: String, mode: String, days: Int?): String? =
+        when (val result = moderation.setVerified(userId, mode, days)) {
+            is StoreResult.Ok -> null
+            is StoreResult.Unavailable -> result.reason
+            is StoreResult.Failed -> result.message
+        }
+
+    private fun ManagedPublisher.toPublisherUi() = UiManagedPublisher(
+        userId = userId,
+        handle = handle,
+        displayName = displayName,
+        avatarUrl = avatarUrl,
+        verified = verified,
+        verifiedUntil = verifiedUntil,
+        items = items,
+    )
 
     fun reports(): List<UiReportedContent> =
         when (val result = moderation.reports()) {
